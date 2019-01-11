@@ -22,17 +22,24 @@ import SingleRecord from './SingleRecord.js';
 import {add_current_product} from '../actions/testGridActions.js';
 import Moment from 'moment'
 import {HTTP_OK, HTTP_NOT_FOUND, HTTP_UNAUTHORIZED, LOGIN_URI,
-  TESTGRID_CONTEXT, TESTGRID_API_CONTEXT} from '../constants.js';
+  TESTGRID_CONTEXT, TESTGRID_API_CONTEXT,RED,BLACK,GREEN} from '../constants.js';
 import {Button, Table, Modal, ModalHeader, ModalBody, ModalFooter} from 'reactstrap';
+import Snackbar from 'material-ui/Snackbar';
+const spinningState = "fa fa-spinner fa-pulse";
+const defaultState = "fa fa-play-circle"
 
 class ProductStatusView extends Component {
 
   constructor(props) {
     super(props);
     this.state = {
+      showSnackBar:false,
+      triggeredIndex:-1,
       hits: [],
       modal: false,
-      errorMassage: ""
+      errorMassage: "",
+      snackBarColor: BLACK,
+      spinnerState: defaultState
     };
 
     this.toggle = this.toggle.bind(this);
@@ -52,6 +59,16 @@ class ProductStatusView extends Component {
     this.setState({
       modal: !this.state.modal,
       errorMassage: Message
+    });
+  }
+
+
+  toggleSnackBar(Message,color) {
+    console.log("triggered ")
+    this.setState({
+      snackBarMessage: Message,
+      showSnackBar: true,
+      snackBarColor: color
     });
   }
 
@@ -77,6 +94,36 @@ class ProductStatusView extends Component {
     this.props.history.push(route);
   }
 
+  triggerBuild(buildName,index) {
+    console.log(index)
+    this.setState({
+      triggeredIndex : index
+    })
+    // this.state.spinnerState=spinningState
+    let url = TESTGRID_API_CONTEXT + '/api/products/trigger-build'
+    fetch(url,{
+      method:"POST",
+      body:buildName,
+      credentials:'same-origin'})
+    .then(response => {
+      if(response.status == HTTP_OK) {
+        this.setState({
+          triggeredIndex : -1
+        })
+        let message = "Succesfully triggered the build : " + buildName;
+        this.toggleSnackBar(message,GREEN);
+        
+      } else{
+        this.setState({
+          triggeredIndex : -1
+        })
+        let errorMessage = "Unable to trigger the build : " + buildName;
+        this.toggleSnackBar(errorMessage,RED);
+        
+      }
+    })
+  }
+
   downloadReport(productName) {
     let url = TESTGRID_API_CONTEXT + '/api/products/reports?product-name=' + productName;
     fetch(url, {
@@ -95,6 +142,10 @@ class ProductStatusView extends Component {
         }
       }
     ).catch(error => console.error(error));
+  }
+
+  handleSnackbarClose() {
+    this.setState({showSnackBar :false})
   }
 
   render() {
@@ -140,6 +191,14 @@ class ProductStatusView extends Component {
             }
           })()}
         </td>
+        <td>
+          <Button  outline color="info" size="sm" onClick={() => {
+                    this.triggerBuild(product.productName,index)
+          }}>
+          {/* "fa fa-spinner fa-pulse" */}
+          <i className= {index === this.state.triggeredIndex ? spinningState : defaultState } aria-hidden="true"> </i>
+          </Button>
+        </td>
         {/* Note: Commented until the backend coordination is configured.
         <td>
           <Button  outline color="info" size="sm" onClick={() => {
@@ -160,6 +219,19 @@ class ProductStatusView extends Component {
 
     return (
       <div>
+        <Snackbar
+          open={this.state.showSnackBar}
+          message={this.state.snackBarMessage}
+          autoHideDuration={4000}
+          contentStyle={{
+            fontWeight: 600,
+            fontSize: "15px"
+          }}
+          bodyStyle={{
+            backgroundColor: this.state.snackBarColor
+          }}
+          onRequestClose={this.handleSnackbarClose.bind(this)}
+        />
         <Table responsive>
           <thead displaySelectAll={false} adjustForCheckbox={false}>
           <tr>

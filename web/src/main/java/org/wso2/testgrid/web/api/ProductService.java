@@ -23,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.wso2.testgrid.common.Product;
 import org.wso2.testgrid.common.config.ConfigurationContext;
+import org.wso2.testgrid.common.config.ConfigurationContext.ConfigurationProperties;
 import org.wso2.testgrid.common.exception.TestGridRuntimeException;
 import org.wso2.testgrid.common.plugins.AWSArtifactReader;
 import org.wso2.testgrid.common.plugins.ArtifactReadable;
@@ -37,13 +38,25 @@ import org.wso2.testgrid.web.bean.ProductStatus;
 import org.wso2.testgrid.web.utils.Constants;
 
 import java.io.IOException;
+import java.net.URL;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
+import java.util.Base64;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.TreeSet;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
 import javax.ws.rs.HEAD;
+import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
@@ -280,5 +293,92 @@ public class ProductService {
             logger.error(msg, e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(msg).build();
         }
+    }
+
+    /**
+     * This api endpoint recieves a product name and then triggers a Jenkins build in the
+     * relevent environment
+     *
+     * @param jobName the jobName
+     * @return status of the job triggering process
+     */
+    @POST
+    @Path("/trigger-build")
+    public Response triggerBuildforProduct(String jobName) {
+        HttpsURLConnection connection = null;
+        String jenkinsUser = ConfigurationContext
+                .getProperty(ConfigurationProperties.JENKINS_USER);
+        String jenkinsToken = ConfigurationContext
+                .getProperty(ConfigurationProperties.JENKINS_TOKEN);
+        String jenkinsHost = ConfigurationContext
+                .getProperty(ConfigurationProperties.JENKINS_HOST);
+        String jobToken = ConfigurationContext
+                .getProperty(ConfigurationProperties.JENKINS_BUILD_TOKEN);
+        logger.error("Running tests for the job : " + jobName);
+        logger.error("Jenkins host " + jenkinsHost);
+
+        try {
+            String authorizationHeader = "Basic " + new String(Base64.getEncoder().
+                    encode((StringUtil.concatStrings(jenkinsUser, ":", jenkinsToken))
+                            .getBytes(StandardCharsets.UTF_8)), Charset.defaultCharset());
+            URL buildTriggerUrl = new URL(jenkinsHost + "/job/" + jobName + "/build?token=" +
+                    jobToken);
+            logger.error("Build URL " + buildTriggerUrl.toString());
+            connection = (HttpsURLConnection) buildTriggerUrl.openConnection();
+            connection.setRequestProperty("Authorization", authorizationHeader);
+            connection.setRequestMethod("GET");
+            connection.setDoOutput(true);
+            SSLSocketFactory sslSocketFactory = createSslSocketFactory();
+            connection.setSSLSocketFactory(sslSocketFactory);
+
+            int responseCode = connection.getResponseCode();
+            if (responseCode == Response.Status.CREATED.getStatusCode()) {
+                Response.ResponseBuilder response = Response.ok("Successfully triggered the job");
+                response.status(Response.Status.OK);
+                return response.build();
+            } else {
+                String msg = "Error occurred while triggering the build : " + jobName +
+                        " with response code : " + responseCode;
+                logger.error(msg);
+                return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(msg).build();
+            }
+
+        } catch (IOException e) {
+            String msg = "Error occurred while opening the connection to the build : " + jobName;
+            logger.error(msg, e);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(msg).build();
+
+        } catch (Exception e) {
+            String msg = "Error occurred while triggering the build : " + jobName;
+            logger.error(msg, e);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(msg).build();
+        }
+    }
+
+    /**
+     * This method is to bypass SSL verification
+     *
+     * @return SSL socket factory that by will bypass SSL verification
+     * @throws Exception java.security exception is thrown in an issue with SSLContext
+     */
+    private static SSLSocketFactory createSslSocketFactory() throws Exception {
+
+        TrustManager[] byPassTrustManagers = new TrustManager[]{new X509TrustManager() {
+            public X509Certificate[] getAcceptedIssuers() {
+
+                return new X509Certificate[0];
+            }
+
+            public void checkClientTrusted(X509Certificate[] chain, String authType) {
+
+            }
+
+            public void checkServerTrusted(X509Certificate[] chain, String authType) {
+
+            }
+        }};
+        SSLContext sslContext = SSLContext.getInstance("TLS");
+        sslContext.init(null, byPassTrustManagers, new SecureRandom());
+        return sslContext.getSocketFactory();
     }
 }

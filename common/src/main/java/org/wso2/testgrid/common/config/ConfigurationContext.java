@@ -231,6 +231,21 @@ public class ConfigurationContext {
         KIBANA_FILTER_STR("KIBANA_FILTER_STR"),
 
         /**
+         * Jenkins username
+         */
+        JENKINS_USER("JENKINS_USER"),
+
+        /**
+         * Jenkins user access token
+         */
+        JENKINS_TOKEN("JENKINS_TOKEN"),
+
+        /**
+         * Common build trigger token for jenkins builds
+         */
+        JENKINS_BUILD_TOKEN("JENKINS_BUILD_TOKEN"),
+
+        /**
          * Kibana dashboard filter with placeholders
          */
         KIBANA_ENDPOINT_URL("KIBANA_ENDPOINT_URL");
